@@ -67,11 +67,10 @@ const submitForm = async () => {
         password: form.password
       })
       
-      if (response.data.success) {
+    if (response.data.success) {
         message.value = '登入成功！'
-        // 將登入的帳號存入 localStorage 模擬維持登入狀態
-        localStorage.setItem('userAccount', response.data.user.account)
-        // 跳轉至後台
+        // 🔥 將 Token 存起來，而不是存明碼帳號
+        localStorage.setItem('userToken', response.data.token)
         router.push('/dashboard')
       } else {
         message.value = response.data.message

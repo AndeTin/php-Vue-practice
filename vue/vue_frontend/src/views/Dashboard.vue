@@ -26,33 +26,36 @@ const router = useRouter()
 const userInfo = ref(null)
 
 onMounted(async () => {
-  // 從 localStorage 取出登入時存的帳號
-  const account = localStorage.getItem('userAccount')
+  const token = localStorage.getItem('userToken')
   
-  if (!account) {
-    alert('找不到登入資訊，請重新登入')
+  if (!token) {
+    alert('找不到登入憑證，請重新登入')
     router.push('/login')
     return
   }
 
-  // 向後端請求個人資料
   try {
-    const response = await axios.get(`http://localhost:8000/profile.php?account=${account}`)
+    // 🔥 改變呼叫方式：不再傳遞 ?account=，而是把 Token 放在 Header 的 Authorization 裡
+    const response = await axios.get('http://localhost:8000/profile.php', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
     if (response.data.success) {
       userInfo.value = response.data.user
     } else {
-      alert('無法取得使用者資料')
+      alert(response.data.message) // 顯示後端退回的錯誤 (如過期、偽造)
+      handleLogout() // 驗證失敗就踢回登入頁
     }
   } catch (error) {
     console.error('取得資料失敗', error)
+    handleLogout()
   }
 })
 
-// 登出邏輯
 const handleLogout = () => {
-  // 清除 localStorage 的記錄
-  localStorage.removeItem('userAccount')
-  // 導向回登入頁
+  localStorage.removeItem('userToken') // 登出時清掉 Token
   router.push('/login')
 }
 </script>

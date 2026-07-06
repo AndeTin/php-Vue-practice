@@ -26,20 +26,15 @@ const router = createRouter({
 
 // 👮 路由守衛：每次網址切換前都會執行這個函式
 router.beforeEach((to, from, next) => {
-  // 1. 檢查 localStorage 是否有儲存帳號（判斷是否登入）
-  const isAuthenticated = !!localStorage.getItem('userAccount')
+  // 改為檢查 localStorage 是否有 Token
+  const isAuthenticated = !!localStorage.getItem('userToken')
 
-  // 2. 如果目標頁面需要驗證 (requiresAuth)，且使用者尚未登入
   if (to.matched.some(record => record.meta.requiresAuth) && !isAuthenticated) {
     alert('此頁面需要登入，正在幫您導向登入頁面')
-    next('/login') // 強制導向登入頁
-  } 
-  // 3. 如果使用者已經登入，卻還想去登入頁面 (/login)
-  else if (to.path === '/login' && isAuthenticated) {
-    next('/dashboard') // 自動幫他跳轉到後台，不讓他重複登入
-  } 
-  // 4. 其他情況一律正常放行
-  else {
+    next('/login')
+  } else if (to.path === '/login' && isAuthenticated) {
+    next('/dashboard')
+  } else {
     next() 
   }
 })
