@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard-container">
     <div class="header">
-      <h2>會員管理後台</h2>
+      <h2>{{ showUserList ? '會員管理後台' : '個人資料' }}</h2>
       <button class="logout-btn" @click="handleLogout">登出</button>
     </div>
     
