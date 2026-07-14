@@ -1,9 +1,0 @@
-[
-    {
-        "ip": "10.0.0.1",
-        "reason": "test block",
-        "rule": "test_rule",
-        "blocked_at": 1783910852,
-        "expires_at": 1783914452
-    }
-]

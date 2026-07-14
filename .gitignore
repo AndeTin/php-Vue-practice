@@ -1,4 +1,5 @@
 php_api/.env
+php_api/log/*
 php_api/composer.json
 php_api/composer.lock
 php_api/vendor/autoload.php
