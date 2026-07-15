@@ -86,7 +86,7 @@ register_shutdown_function(function () use (
 // ==========================================
 if (!$whitelistManager->isWhitelisted($ip) && $blocklistManager->isBlocked($ip)) {
     http_response_code(403);
-    echo json_encode(['success' => false, 'message' => '存取被拒：您的 IP 已被封鎖']);
+    echo json_encode(['success' => false, 'message' => 'Access denied：Your IP has been blocked'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     return true;
 }
 
@@ -99,53 +99,53 @@ if (str_starts_with($uri, '/admin/')) {
     $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
     if (!preg_match('/Bearer\s(\S+)/', $authHeader, $m) || $m[1] !== $adminKey) {
         http_response_code(401);
-        echo json_encode(['success' => false, 'message' => '未授權的管理請求']);
+        echo json_encode(['success' => false, 'message' => 'Unauthorized admin request'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         return true;
     }
 
     match ($uri) {
         '/admin/whitelist' => (function () use ($whitelistManager) {
-            echo json_encode(['success' => true, 'data' => $whitelistManager->list()]);
+            echo json_encode(['success' => true, 'data' => $whitelistManager->list()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         })(),
 
         '/admin/whitelist/add' => (function () use ($whitelistManager) {
             $data = json_decode(file_get_contents('php://input'), true);
             if (empty($data['ip']) || !filter_var($data['ip'], FILTER_VALIDATE_IP)) {
-                echo json_encode(['success' => false, 'message' => '無效的 IP 位址']);
+                echo json_encode(['success' => false, 'message' => 'Invalid IP address'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 return;
             }
             $whitelistManager->add($data['ip']);
-            echo json_encode(['success' => true, 'message' => "已加入白名單: {$data['ip']}"]);
+            echo json_encode(['success' => true, 'message' => "Adding to Whitelist: {$data['ip']}"], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         })(),
 
         '/admin/whitelist/remove' => (function () use ($whitelistManager) {
             $data = json_decode(file_get_contents('php://input'), true);
             if (empty($data['ip'])) {
-                echo json_encode(['success' => false, 'message' => '缺少 IP 位址']);
+                echo json_encode(['success' => false, 'message' => 'IP address required'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 return;
             }
             $removed = $whitelistManager->remove($data['ip']);
             echo json_encode([
                 'success' => $removed,
-                'message' => $removed ? "已移除: {$data['ip']}" : 'IP 不在白名單中',
-            ]);
+                'message' => $removed ? "Remove complete: {$data['ip']}" : 'IP not found in Whitelist',
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         })(),
 
         '/admin/blocklist' => (function () use ($blocklistManager) {
-            echo json_encode(['success' => true, 'data' => $blocklistManager->list()]);
+            echo json_encode(['success' => true, 'data' => $blocklistManager->list()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         })(),
 
         '/admin/blocklist/unblock' => (function () use ($blocklistManager) {
             $data = json_decode(file_get_contents('php://input'), true);
             if (empty($data['ip'])) {
-                echo json_encode(['success' => false, 'message' => '缺少 IP 位址']);
+                echo json_encode(['success' => false, 'message' => 'IP address required'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 return;
             }
             $unblocked = $blocklistManager->unblock($data['ip']);
             echo json_encode([
                 'success' => $unblocked,
-                'message' => $unblocked ? "已解封: {$data['ip']}" : 'IP 不在封鎖列表中',
-            ]);
+                'message' => $unblocked ? "Unblock complete: {$data['ip']}" : 'IP not found in blocklist',
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         })(),
 
         '/admin/monitor/run' => (function () use ($detectionEngine, $logManager, $blocklistManager, $whitelistManager) {
@@ -160,16 +160,16 @@ if (str_starts_with($uri, '/admin/')) {
                 $blocklistManager->block($v['ip'], $v['reason'], $v['rule']);
                 $blockedCount++;
             }
-            $msg = "掃描完成，已封鎖 {$blockedCount} 個 IP";
+            $msg = "Scanning complete，{$blockedCount} IP have been blocked";
             if ($skippedCount > 0) {
-                $msg .= "，{$skippedCount} 個 IP 在白名單中跳過";
+                $msg .= "，{$skippedCount} IP skipped due to Whitelist";
             }
-            echo json_encode(['success' => true, 'message' => $msg]);
+            echo json_encode(['success' => true, 'message' => $msg], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         })(),
 
         default => (function () {
             http_response_code(404);
-            echo json_encode(['success' => false, 'message' => '管理端點不存在']);
+            echo json_encode(['success' => false, 'message' => 'Admin endpoint not exist'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         })(),
     };
 
@@ -187,7 +187,7 @@ if (file_exists($filePath) && pathinfo($filePath, PATHINFO_EXTENSION) === 'php')
     require $filePath;
 } else {
     http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'Not Found']);
+    echo json_encode(['success' => false, 'message' => 'Not Found'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 
 return true;
