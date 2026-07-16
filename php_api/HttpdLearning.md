@@ -64,6 +64,19 @@
 | 2 | `log/access.log` | 實際打開檔案看內容，對照每個欄位 |
 | 3 | `router.php` 第 5 段 | shutdown function 中如何呼叫 `logRequest()` |
 
+### 增量掃描 (CursorManager)
+
+`monitor.php` 不重複讀取已處理過的日誌條目。每次掃描後 `CursorManager` 將讀取位置（byte position + inode）存入 `scan_cursors` 表：
+
+```
+第一次執行：從頭讀 → 處理 → 記錄 position + inode
+第二次執行：比對 inode
+  ├── 相同 → 從 position 繼續讀新行 (增量)
+  └── 不同 (log rotated) → 從頭讀新檔案
+```
+
+相關檔案：`security/CursorManager.php`
+
 ### LogManager 方法速查
 
 ```php
@@ -105,11 +118,12 @@ $entries = $logManager->getRecentEntriesByIp('10.0.0.5', 60);
 ```
 白名單（WhitelistManager）
   ├── 靜態來源：.env 的 WHITELIST_IPS（API 不可刪除）
-  └── 動態來源：log/whitelist.json（API 可增刪）
+  └── 動態來源：DB whitelist_dynamic 表（API 可增刪）
 
 封鎖列表（BlocklistManager）
-  └── 來源：log/blocklist.json
+  └── 來源：DB blocklist 表（取代 blocklist.json）
         每筆含到期時間（expires_at），逾時自動清除
+        同步寫入 ipset http_blocklist（核心層 DROP）
 ```
 
 ### 決策優先順序
@@ -135,17 +149,29 @@ $entries = $logManager->getRecentEntriesByIp('10.0.0.5', 60);
 | 3 | `router.php` 第 6 段 | 白名單→封鎖的判斷順序 |
 | 4 | `.env` | `WHITELIST_IPS`、`BLOCK_DURATION` 的對應位置 |
 
-### 封鎖條目結構
+### 封鎖條目結構 (DB blocklist 表)
 
-```json
-{
-    "ip": "10.0.0.5",
-    "reason": "在 60 秒內產生 55 次 4xx 回應 (閾值: 50)",
-    "rule": "scan_detection",
-    "blocked_at": 1783910830,
-    "expires_at": 1783914430
-}
+| 欄位 | 類型 | 說明 |
+|---|---|---|
+| `ip` | VARCHAR(45) | 被封鎖 IP |
+| `reason` | VARCHAR(500) | 封鎖原因 |
+| `rule` | VARCHAR(100) | 觸發規則 |
+| `blocked_at` | INT | Unix 時間戳 |
+| `expires_at` | INT | 逾期時間（逾時自動解除） |
+
+### ipset 核心層封鎖 (選用)
+
+`.env` 設定 `IPSET_ENABLED=true` 時，BlocklistManager::block() 除了寫入 DB，還會呼叫 `scripts/block-helper.sh` 將 IP 加入 `http_blocklist` 集合。iptables 規則會對該集合內的來源 IP 直接 DROP（不經 PHP），比應用層 403 更徹底。
+
+```bash
+# 查看目前核心層封鎖的 IP
+sudo /usr/local/bin/block-helper.sh list
+
+# 初始化 ipset + iptables (僅需一次)
+sudo bash scripts/init-blocklist.sh
 ```
+
+重啟後 `router.php` 會自動從 DB 回存所有未過期封鎖 IP 到 ipset。
 
 ### 驗收標準
 
@@ -272,10 +298,12 @@ curl -s http://localhost:8000/profile.php \
 
 ### 操作 2：熟悉管理 API
 
-```bash
-ADMIN_KEY="982jfdinc2iqxm89o1i9nxcm3jn828uas8"
+所有 `/admin/*` 端點需帶入 `Authorization: Bearer {ADMIN_KEY}`，`ADMIN_KEY` 在 `.env` 中設定，預設為 `change_this_to_a_random_secret_key`。
 
-# 查看白名單
+```bash
+ADMIN_KEY="change_this_to_a_random_secret_key"
+
+# 查看白名單（含靜態 + 動態）
 curl -s http://localhost:8000/admin/whitelist \
   -H "Authorization: Bearer $ADMIN_KEY"
 
@@ -289,10 +317,27 @@ curl -s -X POST http://localhost:8000/admin/whitelist/add \
 curl -s http://localhost:8000/admin/blocklist \
   -H "Authorization: Bearer $ADMIN_KEY"
 
-# 手動觸發掃描
+# 手動觸發增量掃描
 curl -s -X POST http://localhost:8000/admin/monitor/run \
   -H "Authorization: Bearer $ADMIN_KEY"
+
+# 解封 IP（同時從 DB 和 ipset 移除）
+curl -s -X POST http://localhost:8000/admin/blocklist/unblock \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"ip":"10.0.0.5"}'
 ```
+
+### 操作 2b：管理員前端 (選用)
+
+獨立 Vue 3 專案，位於 `vue/vue_admin/`：
+
+```bash
+cd vue/vue_admin && npm install && npm run dev
+# 開啟 http://localhost:5174
+```
+
+提供圖形化操作：登入鍵入 ADMIN_KEY → 白名單管理表格 → 封鎖列表表格 → 執行掃描按鈕。
 
 ### 操作 3：模擬掃描攻擊
 
@@ -369,10 +414,11 @@ tail -f log/access.log
 ```
 router.php              # 核心流程，所有環節的黏合點
 security/Rules/ScanDetectionRule.php  # 第一條規則的實作樣板
+security/CursorManager.php            # 增量掃描核心設計
 SECURITY_MONITOR.md     # 除錯指南 + 設定參考
 ```
 
-這三個看完就能掌握 80% 的內容，其餘檔案是支撐這三個的底層元件。
+這四個看完就能掌握 80% 的內容，其餘檔案是支撐的底層元件。
 
 ---
 

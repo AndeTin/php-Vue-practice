@@ -2,14 +2,4 @@ php_api/.env
 php_api/log/*
 php_api/composer.json
 php_api/composer.lock
-php_api/vendor/autoload.php
-php_api/vendor/composer/ClassLoader.php
-php_api/vendor/composer/InstalledVersions.php
-php_api/vendor/composer/LICENSE
-php_api/vendor/composer/autoload_classmap.php
-php_api/vendor/composer/autoload_namespaces.php
-php_api/vendor/composer/autoload_psr4.php
-php_api/vendor/composer/autoload_real.php
-php_api/vendor/composer/autoload_static.php
-php_api/vendor/composer/installed.json
-php_api/vendor/composer/installed.php
+php_api/vendor

@@ -51,6 +51,7 @@ if (file_exists($envPath)) {
 // ==========================================
 $logManager       = new LogManager();
 $blocklistManager = new BlocklistManager($pdo, $config);
+$blocklistManager->restoreIpset();
 $whitelistManager = new WhitelistManager($pdo, $config);
 $cursorManager    = new CursorManager($pdo);
 

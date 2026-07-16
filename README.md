@@ -29,23 +29,48 @@
 
 ```text
 php-Vue-practice/
-├── php_api/                  # PHP 後端 API 專案
-│   ├── .env                  # 資料庫與安全密鑰設定檔 (需自行建立)
-│   ├── cors.php              # 跨來源資源共享 (CORS) Header 配置
-│   ├── db.php                # 安全讀取 .env 與建立 PDO 連線
-│   ├── register.php          # 會員註冊端點 (Bcrypt 加密)
-│   ├── login.php             # 會員登入端點 (數位簽章 Token 簽發)
-│   └── profile.php           # 會員資料查詢端點 (Token 驗證)
+├── php_api/                      # PHP 後端 API 專案
+│   ├── .env                      # 資料庫與安全密鑰設定檔
+│   ├── cors.php                  # CORS Header 配置
+│   ├── db.php                    # 安全讀取 .env 與建立 PDO 連線
+│   ├── router.php                # 前端控制器 (所有請求入口)
+│   ├── monitor.php               # CLI 增量掃描腳本
+│   ├── register.php              # 會員註冊端點
+│   ├── login.php                 # 會員登入端點
+│   ├── profile.php               # 會員資料查詢端點
+│   ├── users.php                 # 會員列表端點
+│   ├── log/                      # 存取日誌
+│   │   └── access.log            # JSON Lines 格式日誌
+│   ├── scripts/
+│   │   ├── block-helper.sh       # ipset 操作腳本
+│   │   └── init-blocklist.sh     # ipset + iptables 初始化
+│   ├── security/
+│   │   ├── LogManager.php        # 日誌管理
+│   │   ├── BlocklistManager.php  # 封鎖管理 (DB + ipset)
+│   │   ├── WhitelistManager.php  # 白名單管理 (DB + .env 靜態)
+│   │   ├── CursorManager.php     # 掃描游標管理
+│   │   ├── DetectionEngine.php   # 偵測引擎
+│   │   └── Rules/
+│   │       ├── RuleInterface.php
+│   │       ├── ScanDetectionRule.php
+│   │       └── MaliciousUserAgentRule.php
+│   ├── SECURITY_MONITOR.md       # 安全監控文件
+│   └── HttpdLearning.md          # 學習路徑文件
 │
-└── vue/
-    └── vue_frontend/         # Vue.js 前端專案
-        ├── src/
-        │   ├── main.js       # 入口點
-        │   ├── App.vue       # 主元件
-        │   ├── router/       # Vue Router 路由守衛配置
-        │   └── views/        # 頁面元件 (Login.vue, Dashboard.vue 等)
-        ├── package.json      # 前端相依套件與指令檔
-        └── vite.config.js    # Vite 設定檔
+├── vue/
+│   ├── vue_frontend/             # 會員前端 (Vue 3 + Vite)
+│   └── vue_admin/                # 管理員前端 (Vue 3 + Vite，選用)
+│       ├── src/
+│       │   ├── main.js
+│       │   ├── App.vue
+│       │   ├── router/index.js
+│       │   ├── api/admin.js
+│       │   ├── views/ (AdminLogin, AdminDashboard)
+│       │   └── components/ (WhitelistPanel, BlocklistPanel, ScanControl)
+│       ├── package.json
+│       └── vite.config.js
+│
+└── database.sql                  # 資料庫建表腳本 (含安全相關表格)
 ```
 
 ---
@@ -54,19 +79,51 @@ php-Vue-practice/
 
 請在您的 MySQL 資料庫中執行以下 SQL 指令來建立資料庫與使用者資料表：
 
-```sql
--- 建立資料庫 (請根據您 .env 內設定的名稱調整，例如 vue_practice 或 vue_php_practice)
-CREATE DATABASE IF NOT EXISTS `vue_practice` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `vue_practice`;
+完整的 SQL 腳本請見 `database.sql`，包含會員、封鎖列表、白名單、掃描游標等表格：
 
--- 建立使用者資料表
-CREATE TABLE IF NOT EXISTS `users` (
-    `id` INT AUTO_INCREMENT PRIMARY KEY,
-    `account` VARCHAR(50) NOT NULL UNIQUE COMMENT '使用者帳號',
-    `password` VARCHAR(255) NOT NULL COMMENT 'Bcrypt 加密密碼',
-    `name` VARCHAR(100) DEFAULT '無名氏' COMMENT '姓名',
-    `email` VARCHAR(150) DEFAULT NULL COMMENT '電子信箱',
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '註冊時間'
+```sql
+-- 建立資料庫 (請根據您 .env 內設定的名稱調整)
+CREATE DATABASE IF NOT EXISTS vue_php_practice
+DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE vue_php_practice;
+
+-- 會員資料表
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    account VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 封鎖列表 (取代 blocklist.json)
+CREATE TABLE IF NOT EXISTS blocklist (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip VARCHAR(45) NOT NULL,
+    reason VARCHAR(500) NOT NULL,
+    rule VARCHAR(100) NOT NULL,
+    blocked_at INT NOT NULL COMMENT 'Unix 時間戳',
+    expires_at INT NOT NULL COMMENT 'Unix 時間戳，逾期自動解除',
+    INDEX idx_ip (ip),
+    INDEX idx_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 動態白名單 (取代 whitelist.json)
+CREATE TABLE IF NOT EXISTS whitelist_dynamic (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip VARCHAR(45) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 掃描游標 (紀錄 monitor.php 讀取進度)
+CREATE TABLE IF NOT EXISTS scan_cursors (
+    id VARCHAR(50) PRIMARY KEY,
+    filename VARCHAR(500) NOT NULL,
+    inode BIGINT NOT NULL DEFAULT 0,
+    position BIGINT NOT NULL DEFAULT 0,
+    file_size BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
@@ -77,11 +134,20 @@ CREATE TABLE IF NOT EXISTS `users` (
 在 `php_api/` 目錄下建立 `.env` 檔案，內容如下（請替換為您的實際資料庫配置）：
 
 ```env
+# === 資料庫 ===
 DB_HOST=127.0.0.1
-DB_NAME=vue_practice
+DB_NAME=vue_php_practice
 DB_USER=root
 DB_PASS=您的資料庫密碼
-JWT_SECRET=您的自訂隨機JWT密鑰(例如: j_d9uj4c9v2mrhsg98unbp6bnskgjnnmcx)
+JWT_SECRET=您的自訂隨機JWT密鑰
+
+# === 安全監控 (選用) ===
+WHITELIST_IPS=127.0.0.1,::1
+BLOCK_DURATION=3600
+SCAN_THRESHOLD=50
+SCAN_WINDOW=60
+ADMIN_KEY=change_this_to_a_random_secret_key
+IPSET_ENABLED=true
 ```
 
 > **安全提示：** 後端 `db.php` 內建有安全性解析，如果沒找到 `.env` 檔案，預設將會退回使用 `localhost` 且資料庫名稱為 `vue_php_practice`、帳號為 `root`、密碼為空。
@@ -98,8 +164,8 @@ JWT_SECRET=您的自訂隨機JWT密鑰(例如: j_d9uj4c9v2mrhsg98unbp6bnskgjnnmc
 # 1. 進入後端目錄
 cd php_api
 
-# 2. 啟動 PHP 內建伺服器（監聽 8000 埠）
-php -S localhost:8000
+# 2. 啟動 PHP 內建伺服器（監聽 8000 埠，透過 router.php 前控制器）
+php -S localhost:8000 router.php
 ```
 > 後端 API 網址將會是：`http://localhost:8000`
 

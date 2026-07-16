@@ -34,7 +34,7 @@ class CursorManager
     /**
      * 檢查檔案是否被 rotation 或截斷
      *
-     * @return array{rotated: bool, currentInode: int, currentSize: int}
+     * @return array{rotated: bool, currentInode: int, currentSize: int, oldInode?: int, oldPosition?: int}
      */
     public function checkRotation(string $id, string $filePath): array
     {
@@ -53,14 +53,19 @@ class CursorManager
             return ['rotated' => false, 'currentInode' => $currentInode, 'currentSize' => $currentSize];
         }
 
+        $oldInode    = (int) $cursor['inode'];
+        $oldPosition = (int) $cursor['position'];
+
         $rotated =
-            $cursor['inode'] !== $currentInode ||
-            $currentSize < $cursor['position'];
+            $oldInode !== $currentInode ||
+            $currentSize < $oldPosition;
 
         return [
             'rotated'      => $rotated,
             'currentInode' => $currentInode,
             'currentSize'  => $currentSize,
+            'oldInode'     => $oldInode,
+            'oldPosition'  => $oldPosition,
         ];
     }
 }
