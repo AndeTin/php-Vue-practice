@@ -19,17 +19,19 @@
 require_once __DIR__ . '/cors.php';
 
 // ==========================================
-// 2. 載入安全模組
+// 2. 載入安全模組 + 資料庫連線
 // ==========================================
 require_once __DIR__ . '/security/LogManager.php';
 require_once __DIR__ . '/security/BlocklistManager.php';
 require_once __DIR__ . '/security/WhitelistManager.php';
+require_once __DIR__ . '/security/CursorManager.php';
 require_once __DIR__ . '/security/DetectionEngine.php';
 require_once __DIR__ . '/security/Rules/ScanDetectionRule.php';
 require_once __DIR__ . '/security/Rules/MaliciousUserAgentRule.php';
+require_once __DIR__ . '/db.php';
 
 // ==========================================
-// 3. 讀取設定 (與 db.php 各自獨立，不衝突)
+// 3. 讀取設定 (router 自用一份，與 db.php 的 $dbConfig 不衝突)
 // ==========================================
 $envPath = __DIR__ . '/.env';
 $config = [];
@@ -48,8 +50,9 @@ if (file_exists($envPath)) {
 // 4. 初始化管理物件
 // ==========================================
 $logManager       = new LogManager();
-$blocklistManager = new BlocklistManager($config);
-$whitelistManager = new WhitelistManager($config);
+$blocklistManager = new BlocklistManager($pdo, $config);
+$whitelistManager = new WhitelistManager($pdo, $config);
+$cursorManager    = new CursorManager($pdo);
 
 $detectionEngine = new DetectionEngine();
 $detectionEngine->registerRule(new ScanDetectionRule($config));

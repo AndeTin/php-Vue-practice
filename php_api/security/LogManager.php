@@ -25,6 +25,57 @@ class LogManager
     }
 
     /**
+     * 從指定 byte 位置開始增量讀取新行
+     *
+     * @return array{entries: array, newPosition: int, inode: int, size: int}
+     */
+    public function getNewEntriesFrom(string $filePath, int $position): array
+    {
+        $result = [
+            'entries'     => [],
+            'newPosition' => $position,
+            'inode'       => 0,
+            'size'        => 0,
+        ];
+
+        if (!file_exists($filePath)) {
+            return $result;
+        }
+
+        $stat = stat($filePath);
+        $result['inode'] = $stat['ino'] ?? 0;
+        $result['size']  = $stat['size'] ?? 0;
+
+        if ($position >= $result['size']) {
+            return $result;
+        }
+
+        $handle = fopen($filePath, 'r');
+        if (!$handle) {
+            return $result;
+        }
+
+        if ($position > 0) {
+            fseek($handle, $position);
+        }
+
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+            if ($line === '') continue;
+
+            $entry = json_decode($line, true);
+            if ($entry) {
+                $result['entries'][] = $entry;
+            }
+        }
+
+        $result['newPosition'] = ftell($handle);
+        fclose($handle);
+
+        return $result;
+    }
+
+    /**
      * 取得指定時間範圍內的所有日誌條目
      */
     public function getRecentEntries(int $windowSeconds = 60): array
